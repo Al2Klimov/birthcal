@@ -1,0 +1,10 @@
+[package]
+name = "birthcal"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82.0"
+license = "AGPL-3.0"
+authors = ["Alexander A. Klimov <a@kli.mov>"]
+
+[dependencies]
+cgi = "0.7.2"
