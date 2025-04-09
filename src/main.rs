@@ -1,6 +1,7 @@
 mod cli;
 
 use cgi::{empty_response, handle, text_response, Request, Response};
+use std::io::BufReader;
 
 fn main() {
     handle(handler)
@@ -20,7 +21,17 @@ fn handler(_: Request) -> Response {
             eprintln!("GET {}: {}", url, err);
             return empty_response(502);
         }
-        Ok(mut resp) => {}
+        Ok(mut resp) => {
+            for i in ical::VcardParser::new(BufReader::new(resp.body_mut().as_reader())) {
+                match i {
+                    Err(err) => {
+                        eprintln!("GET {}: {}", url, err);
+                        return empty_response(502);
+                    }
+                    Ok(vcard) => {}
+                }
+            }
+        }
     }
 
     text_response(501, "")
