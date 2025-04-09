@@ -8,3 +8,4 @@ authors = ["Alexander A. Klimov <a@kli.mov>"]
 
 [dependencies]
 cgi = "0.7.2"
+ureq = "3.0.10"
