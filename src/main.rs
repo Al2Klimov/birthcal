@@ -2,11 +2,13 @@
 
 mod cli;
 
+use crate::cli::EnvError;
 use cgi::{empty_response, handle, html_response, Request, Response};
 use chrono::{Datelike, NaiveDate};
 use html::root::Html;
 use ical::parser::vcard::component::VcardContact;
 use ical::parser::Component;
+use percent_encoding_rfc3986::{utf8_percent_encode, NON_ALPHANUMERIC};
 use std::collections::BTreeSet;
 use std::io::BufReader;
 
@@ -21,6 +23,17 @@ fn handler(_: Request) -> Response {
             return empty_response(500);
         }
         Ok(url) => url,
+    };
+
+    let srch = match cli::require_noempty_utf8_env("BIRTHCAL_SEARCH") {
+        Err(err) => match err.err {
+            EnvError::Missing => None,
+            _ => {
+                eprintln!("{}", err);
+                return empty_response(500);
+            }
+        },
+        Ok(url) => Some(url),
     };
 
     match ureq::get(url.clone()).call() {
@@ -77,7 +90,23 @@ fn handler(_: Request) -> Response {
                                     tr.table_cell(|td| {
                                         td.text(format!("{}-{}-{}", year, month, day))
                                     })
-                                    .table_cell(|td| td.text(name))
+                                    .table_cell(|td| {
+                                        match &srch {
+                                            None => td.text(name),
+                                            Some(url) => td.anchor(|a| {
+                                                a.target("_blank")
+                                                    .href(format!(
+                                                        "{}{}",
+                                                        url,
+                                                        utf8_percent_encode(
+                                                            name.as_str(),
+                                                            NON_ALPHANUMERIC
+                                                        )
+                                                    ))
+                                                    .text(name)
+                                            }),
+                                        }
+                                    })
                                 });
                             }
                             table
