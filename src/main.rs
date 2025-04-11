@@ -1,11 +1,15 @@
+#![recursion_limit = "512"]
+
 mod cli;
 
-use cgi::{empty_response, handle, text_response, Request, Response};
+use crate::cli::EnvError;
+use cgi::{empty_response, handle, html_response, Request, Response};
 use chrono::{Datelike, NaiveDate};
+use html::root::Html;
 use ical::parser::vcard::component::VcardContact;
 use ical::parser::Component;
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::Write;
+use percent_encoding_rfc3986::{utf8_percent_encode, NON_ALPHANUMERIC};
+use std::collections::BTreeSet;
 use std::io::BufReader;
 
 fn main() {
@@ -21,14 +25,24 @@ fn handler(_: Request) -> Response {
         Ok(url) => url,
     };
 
+    let srch = match cli::require_noempty_utf8_env("BIRTHCAL_SEARCH") {
+        Err(err) => match err.err {
+            EnvError::Missing => None,
+            _ => {
+                eprintln!("{}", err);
+                return empty_response(500);
+            }
+        },
+        Ok(url) => Some(url),
+    };
+
     match ureq::get(url.clone()).call() {
         Err(err) => {
             eprintln!("GET {}: {}", url, err);
             empty_response(502)
         }
         Ok(mut resp) => {
-            let mut names_by_mdy =
-                BTreeMap::<u32, BTreeMap<u32, BTreeMap<i32, BTreeSet<String>>>>::new();
+            let mut names_by_mdy = BTreeSet::new();
 
             for i in ical::VcardParser::new(BufReader::new(resp.body_mut().as_reader())) {
                 match i {
@@ -52,14 +66,12 @@ fn handler(_: Request) -> Response {
                                         return empty_response(502);
                                     }
                                     Ok(date) => {
-                                        names_by_mdy
-                                            .entry(date.month())
-                                            .or_default()
-                                            .entry(date.day())
-                                            .or_default()
-                                            .entry(date.year())
-                                            .or_default()
-                                            .replace(name.clone());
+                                        names_by_mdy.replace((
+                                            date.month(),
+                                            date.day(),
+                                            date.year(),
+                                            name.clone(),
+                                        ));
                                     }
                                 }
                             }
@@ -68,25 +80,41 @@ fn handler(_: Request) -> Response {
                 }
             }
 
-            let mut body = String::new();
-
-            for (month, names_by_dy) in names_by_mdy {
-                for (day, names_by_year) in names_by_dy {
-                    for (year, names) in names_by_year {
-                        for name in names {
-                            match writeln!(body, "{}-{}-{} {}", year, month, day, name) {
-                                Err(err) => {
-                                    eprintln!("{}", err);
-                                    return empty_response(500);
-                                }
-                                Ok(_) => {}
+            html_response(
+                200,
+                Html::builder()
+                    .body(|body| {
+                        body.table(|table| {
+                            for (month, day, year, name) in names_by_mdy {
+                                table.table_row(|tr| {
+                                    tr.table_cell(|td| {
+                                        td.text(format!("{}-{}-{}", year, month, day))
+                                    })
+                                    .table_cell(|td| {
+                                        match &srch {
+                                            None => td.text(name),
+                                            Some(url) => td.anchor(|a| {
+                                                a.target("_blank")
+                                                    .href(format!(
+                                                        "{}{}",
+                                                        url,
+                                                        utf8_percent_encode(
+                                                            name.as_str(),
+                                                            NON_ALPHANUMERIC
+                                                        )
+                                                    ))
+                                                    .text(name)
+                                            }),
+                                        }
+                                    })
+                                });
                             }
-                        }
-                    }
-                }
-            }
-
-            text_response(200, body)
+                            table
+                        })
+                    })
+                    .build()
+                    .to_string(),
+            )
         }
     }
 }
