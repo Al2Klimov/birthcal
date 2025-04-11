@@ -1,11 +1,13 @@
+#![recursion_limit = "512"]
+
 mod cli;
 
-use cgi::{empty_response, handle, text_response, Request, Response};
+use cgi::{empty_response, handle, html_response, Request, Response};
 use chrono::{Datelike, NaiveDate};
+use html::root::Html;
 use ical::parser::vcard::component::VcardContact;
 use ical::parser::Component;
 use std::collections::BTreeSet;
-use std::fmt::Write;
 use std::io::BufReader;
 
 fn main() {
@@ -65,19 +67,25 @@ fn handler(_: Request) -> Response {
                 }
             }
 
-            let mut body = String::new();
-
-            for (month, day, year, name) in names_by_mdy {
-                match writeln!(body, "{}-{}-{} {}", year, month, day, name) {
-                    Err(err) => {
-                        eprintln!("{}", err);
-                        return empty_response(500);
-                    }
-                    Ok(_) => {}
-                }
-            }
-
-            text_response(200, body)
+            html_response(
+                200,
+                Html::builder()
+                    .body(|body| {
+                        body.table(|table| {
+                            for (month, day, year, name) in names_by_mdy {
+                                table.table_row(|tr| {
+                                    tr.table_cell(|td| {
+                                        td.text(format!("{}-{}-{}", year, month, day))
+                                    })
+                                    .table_cell(|td| td.text(name))
+                                });
+                            }
+                            table
+                        })
+                    })
+                    .build()
+                    .to_string(),
+            )
         }
     }
 }
