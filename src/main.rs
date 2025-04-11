@@ -4,7 +4,7 @@ use cgi::{empty_response, handle, text_response, Request, Response};
 use chrono::{Datelike, NaiveDate};
 use ical::parser::vcard::component::VcardContact;
 use ical::parser::Component;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fmt::Write;
 use std::io::BufReader;
 
@@ -27,8 +27,7 @@ fn handler(_: Request) -> Response {
             empty_response(502)
         }
         Ok(mut resp) => {
-            let mut names_by_mdy =
-                BTreeMap::<u32, BTreeMap<u32, BTreeMap<i32, BTreeSet<String>>>>::new();
+            let mut names_by_mdy = BTreeSet::new();
 
             for i in ical::VcardParser::new(BufReader::new(resp.body_mut().as_reader())) {
                 match i {
@@ -52,14 +51,12 @@ fn handler(_: Request) -> Response {
                                         return empty_response(502);
                                     }
                                     Ok(date) => {
-                                        names_by_mdy
-                                            .entry(date.month())
-                                            .or_default()
-                                            .entry(date.day())
-                                            .or_default()
-                                            .entry(date.year())
-                                            .or_default()
-                                            .replace(name.clone());
+                                        names_by_mdy.replace((
+                                            date.month(),
+                                            date.day(),
+                                            date.year(),
+                                            name.clone(),
+                                        ));
                                     }
                                 }
                             }
@@ -70,19 +67,13 @@ fn handler(_: Request) -> Response {
 
             let mut body = String::new();
 
-            for (month, names_by_dy) in names_by_mdy {
-                for (day, names_by_year) in names_by_dy {
-                    for (year, names) in names_by_year {
-                        for name in names {
-                            match writeln!(body, "{}-{}-{} {}", year, month, day, name) {
-                                Err(err) => {
-                                    eprintln!("{}", err);
-                                    return empty_response(500);
-                                }
-                                Ok(_) => {}
-                            }
-                        }
+            for (month, day, year, name) in names_by_mdy {
+                match writeln!(body, "{}-{}-{} {}", year, month, day, name) {
+                    Err(err) => {
+                        eprintln!("{}", err);
+                        return empty_response(500);
                     }
+                    Ok(_) => {}
                 }
             }
 
