@@ -9,7 +9,7 @@ use html::root::Html;
 use ical::parser::vcard::component::VcardContact;
 use ical::parser::Component;
 use percent_encoding_rfc3986::{utf8_percent_encode, NON_ALPHANUMERIC};
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::io::BufReader;
 
 fn main() {
@@ -42,7 +42,7 @@ fn handler(_: Request) -> Response {
             empty_response(502)
         }
         Ok(mut resp) => {
-            let mut names_by_mdy = BTreeSet::new();
+            let mut urls_by_mdy_name = BTreeMap::new();
 
             for i in ical::VcardParser::new(BufReader::new(resp.body_mut().as_reader())) {
                 match i {
@@ -50,28 +50,23 @@ fn handler(_: Request) -> Response {
                         eprintln!("GET {}: {}", url, err);
                         return empty_response(502);
                     }
-                    Ok(vcard) => match contact_prop(&vcard, "BDAY") {
+                    Ok(mut vcard) => match contact_prop(&mut vcard, "BDAY") {
                         None => {}
-                        Some(birthday) => match contact_prop(&vcard, "FN") {
+                        Some(birthday) => match contact_prop(&mut vcard, "FN") {
                             None => {}
                             Some(name) => {
                                 let df = "%Y%m%d";
 
-                                match NaiveDate::parse_from_str(
-                                    birthday.replace("-", "").as_str(),
-                                    df,
-                                ) {
+                                match NaiveDate::parse_from_str(birthday.as_str(), df) {
                                     Err(err) => {
                                         eprintln!("{} is not like {}: {}", birthday, df, err);
                                         return empty_response(502);
                                     }
                                     Ok(date) => {
-                                        names_by_mdy.replace((
-                                            date.month(),
-                                            date.day(),
-                                            date.year(),
-                                            name.clone(),
-                                        ));
+                                        urls_by_mdy_name.insert(
+                                            (date.month(), date.day(), date.year(), name),
+                                            contact_prop(&mut vcard, "URL"),
+                                        );
                                     }
                                 }
                             }
@@ -85,28 +80,33 @@ fn handler(_: Request) -> Response {
                 Html::builder()
                     .body(|body| {
                         body.table(|table| {
-                            for (month, day, year, name) in names_by_mdy {
+                            for ((month, day, year, name), url) in urls_by_mdy_name {
                                 table.table_row(|tr| {
                                     tr.table_cell(|td| {
                                         td.text(format!("{}-{}-{}", year, month, day))
                                     })
-                                    .table_cell(|td| {
-                                        match &srch {
-                                            None => td.text(name),
+                                    .table_cell(
+                                        |td| match url {
                                             Some(url) => td.anchor(|a| {
-                                                a.target("_blank")
-                                                    .href(format!(
-                                                        "{}{}",
-                                                        url,
-                                                        utf8_percent_encode(
-                                                            name.as_str(),
-                                                            NON_ALPHANUMERIC
-                                                        )
-                                                    ))
-                                                    .text(name)
+                                                a.target("_blank").href(url).text(name)
                                             }),
-                                        }
-                                    })
+                                            None => match &srch {
+                                                Some(url) => td.anchor(|a| {
+                                                    a.target("_blank")
+                                                        .href(format!(
+                                                            "{}{}",
+                                                            url,
+                                                            utf8_percent_encode(
+                                                                name.as_str(),
+                                                                NON_ALPHANUMERIC
+                                                            )
+                                                        ))
+                                                        .text(name)
+                                                }),
+                                                None => td.text(name),
+                                            },
+                                        },
+                                    )
                                 });
                             }
                             table
@@ -119,12 +119,9 @@ fn handler(_: Request) -> Response {
     }
 }
 
-fn contact_prop<'a>(contact: &'a VcardContact, prop: &'static str) -> Option<&'a String> {
-    match contact.get_property(prop) {
+fn contact_prop(contact: &mut VcardContact, prop: &'static str) -> Option<String> {
+    match contact.get_property_mut(prop) {
         None => None,
-        Some(val) => match &val.value {
-            None => None,
-            Some(v) => Some(v),
-        },
+        Some(val) => val.value.take(),
     }
 }
