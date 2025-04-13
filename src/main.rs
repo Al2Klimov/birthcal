@@ -50,9 +50,9 @@ fn handler(_: Request) -> Response {
                         eprintln!("GET {}: {}", url, err);
                         return empty_response(502);
                     }
-                    Ok(vcard) => match contact_prop(&vcard, "BDAY") {
+                    Ok(mut vcard) => match contact_prop(&mut vcard, "BDAY") {
                         None => {}
-                        Some(birthday) => match contact_prop(&vcard, "FN") {
+                        Some(birthday) => match contact_prop(&mut vcard, "FN") {
                             None => {}
                             Some(name) => {
                                 let df = "%Y%m%d";
@@ -67,8 +67,8 @@ fn handler(_: Request) -> Response {
                                     }
                                     Ok(date) => {
                                         urls_by_mdy_name.insert(
-                                            (date.month(), date.day(), date.year(), name.clone()),
-                                            contact_prop(&vcard, "URL").map(|url| url.clone()),
+                                            (date.month(), date.day(), date.year(), name),
+                                            contact_prop(&mut vcard, "URL"),
                                         );
                                     }
                                 }
@@ -122,12 +122,9 @@ fn handler(_: Request) -> Response {
     }
 }
 
-fn contact_prop<'a>(contact: &'a VcardContact, prop: &'static str) -> Option<&'a String> {
-    match contact.get_property(prop) {
+fn contact_prop(contact: &mut VcardContact, prop: &'static str) -> Option<String> {
+    match contact.get_property_mut(prop) {
         None => None,
-        Some(val) => match &val.value {
-            None => None,
-            Some(v) => Some(v),
-        },
+        Some(val) => val.value.take(),
     }
 }
