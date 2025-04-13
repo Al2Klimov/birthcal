@@ -57,10 +57,7 @@ fn handler(_: Request) -> Response {
                             Some(name) => {
                                 let df = "%Y%m%d";
 
-                                match NaiveDate::parse_from_str(
-                                    birthday.replace("-", "").as_str(),
-                                    df,
-                                ) {
+                                match NaiveDate::parse_from_str(birthday.as_str(), df) {
                                     Err(err) => {
                                         eprintln!("{} is not like {}: {}", birthday, df, err);
                                         return empty_response(502);
