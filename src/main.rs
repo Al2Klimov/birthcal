@@ -9,7 +9,7 @@ use html::root::Html;
 use ical::parser::vcard::component::VcardContact;
 use ical::parser::Component;
 use percent_encoding_rfc3986::{utf8_percent_encode, NON_ALPHANUMERIC};
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::io::BufReader;
 
 fn main() {
@@ -42,7 +42,7 @@ fn handler(_: Request) -> Response {
             empty_response(502)
         }
         Ok(mut resp) => {
-            let mut names_by_mdy = BTreeSet::new();
+            let mut urls_by_mdy_name = BTreeMap::new();
 
             for i in ical::VcardParser::new(BufReader::new(resp.body_mut().as_reader())) {
                 match i {
@@ -66,12 +66,10 @@ fn handler(_: Request) -> Response {
                                         return empty_response(502);
                                     }
                                     Ok(date) => {
-                                        names_by_mdy.replace((
-                                            date.month(),
-                                            date.day(),
-                                            date.year(),
-                                            name.clone(),
-                                        ));
+                                        urls_by_mdy_name.insert(
+                                            (date.month(), date.day(), date.year(), name.clone()),
+                                            contact_prop(&vcard, "URL").map(|url| url.clone()),
+                                        );
                                     }
                                 }
                             }
@@ -85,28 +83,33 @@ fn handler(_: Request) -> Response {
                 Html::builder()
                     .body(|body| {
                         body.table(|table| {
-                            for (month, day, year, name) in names_by_mdy {
+                            for ((month, day, year, name), url) in urls_by_mdy_name {
                                 table.table_row(|tr| {
                                     tr.table_cell(|td| {
                                         td.text(format!("{}-{}-{}", year, month, day))
                                     })
-                                    .table_cell(|td| {
-                                        match &srch {
-                                            None => td.text(name),
+                                    .table_cell(
+                                        |td| match url {
                                             Some(url) => td.anchor(|a| {
-                                                a.target("_blank")
-                                                    .href(format!(
-                                                        "{}{}",
-                                                        url,
-                                                        utf8_percent_encode(
-                                                            name.as_str(),
-                                                            NON_ALPHANUMERIC
-                                                        )
-                                                    ))
-                                                    .text(name)
+                                                a.target("_blank").href(url).text(name)
                                             }),
-                                        }
-                                    })
+                                            None => match &srch {
+                                                Some(url) => td.anchor(|a| {
+                                                    a.target("_blank")
+                                                        .href(format!(
+                                                            "{}{}",
+                                                            url,
+                                                            utf8_percent_encode(
+                                                                name.as_str(),
+                                                                NON_ALPHANUMERIC
+                                                            )
+                                                        ))
+                                                        .text(name)
+                                                }),
+                                                None => td.text(name),
+                                            },
+                                        },
+                                    )
                                 });
                             }
                             table
