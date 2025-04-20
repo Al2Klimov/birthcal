@@ -1,4 +1,4 @@
-#![recursion_limit = "512"]
+#![recursion_limit = "464"]
 
 mod cli;
 
