@@ -1,4 +1,4 @@
-#![recursion_limit = "512"]
+#![recursion_limit = "443"]
 
 mod cli;
 
