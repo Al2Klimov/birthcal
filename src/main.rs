@@ -6,6 +6,7 @@ use crate::cli::EnvError;
 use cgi::{empty_response, handle, html_response, Request, Response};
 use chrono::{Datelike, NaiveDate};
 use html::root::Html;
+use html::tables::builders::TableCellBuilder;
 use ical::parser::vcard::component::VcardContact;
 use ical::parser::Component;
 use percent_encoding_rfc3986::{utf8_percent_encode, NON_ALPHANUMERIC};
@@ -43,6 +44,7 @@ fn handler(_: Request) -> Response {
         }
         Ok(mut resp) => {
             let mut urls_by_mdy_name = BTreeMap::new();
+            let mut urls_by_name = BTreeMap::new();
 
             for i in ical::VcardParser::new(BufReader::new(resp.body_mut().as_reader())) {
                 match i {
@@ -50,11 +52,13 @@ fn handler(_: Request) -> Response {
                         eprintln!("GET {}: {}", url, err);
                         return empty_response(502);
                     }
-                    Ok(mut vcard) => match contact_prop(&mut vcard, "BDAY") {
+                    Ok(mut vcard) => match contact_prop(&mut vcard, "FN") {
                         None => {}
-                        Some(birthday) => match contact_prop(&mut vcard, "FN") {
-                            None => {}
-                            Some(name) => {
+                        Some(name) => match contact_prop(&mut vcard, "BDAY") {
+                            None => {
+                                urls_by_name.insert(name, contact_prop(&mut vcard, "URL"));
+                            }
+                            Some(birthday) => {
                                 let df = "%Y%m%d";
 
                                 match NaiveDate::parse_from_str(birthday.as_str(), df) {
@@ -85,30 +89,17 @@ fn handler(_: Request) -> Response {
                                     tr.table_cell(|td| {
                                         td.text(format!("{}-{}-{}", year, month, day))
                                     })
-                                    .table_cell(
-                                        |td| match url {
-                                            Some(url) => td.anchor(|a| {
-                                                a.target("_blank").href(url).text(name)
-                                            }),
-                                            None => match &srch {
-                                                Some(url) => td.anchor(|a| {
-                                                    a.target("_blank")
-                                                        .href(format!(
-                                                            "{}{}",
-                                                            url,
-                                                            utf8_percent_encode(
-                                                                name.as_str(),
-                                                                NON_ALPHANUMERIC
-                                                            )
-                                                        ))
-                                                        .text(name)
-                                                }),
-                                                None => td.text(name),
-                                            },
-                                        },
-                                    )
+                                    .table_cell(|td| name_cell(td, name, url, &srch))
                                 });
                             }
+
+                            for (name, url) in urls_by_name {
+                                table.table_row(|tr| {
+                                    tr.table_cell(|td| td.text("?"))
+                                        .table_cell(|td| name_cell(td, name, url, &srch))
+                                });
+                            }
+
                             table
                         })
                     })
@@ -123,5 +114,28 @@ fn contact_prop(contact: &mut VcardContact, prop: &'static str) -> Option<String
     match contact.get_property_mut(prop) {
         None => None,
         Some(val) => val.value.take(),
+    }
+}
+
+fn name_cell<'a>(
+    td: &'a mut TableCellBuilder,
+    name: String,
+    url: Option<String>,
+    srch: &Option<String>,
+) -> &'a mut TableCellBuilder {
+    match url {
+        Some(url) => td.anchor(|a| a.target("_blank").href(url).text(name)),
+        None => match &srch {
+            Some(url) => td.anchor(|a| {
+                a.target("_blank")
+                    .href(format!(
+                        "{}{}",
+                        url,
+                        utf8_percent_encode(name.as_str(), NON_ALPHANUMERIC)
+                    ))
+                    .text(name)
+            }),
+            None => td.text(name),
+        },
     }
 }
