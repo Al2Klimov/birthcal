@@ -7,7 +7,7 @@ license = "AGPL-3.0"
 authors = ["Alexander A. Klimov <a@kli.mov>"]
 
 [dependencies]
-chrono = "0.4.40"
+chrono = "0.4.41"
 cgi = "0.7.2"
 html = "0.6.3"
 ical = "0.11.0"
