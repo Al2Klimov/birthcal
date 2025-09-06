@@ -3,12 +3,12 @@
 mod cli;
 
 use crate::cli::EnvError;
-use cgi::{empty_response, handle, html_response, Request, Response};
+use cgi::{Request, Response, empty_response, handle, html_response};
 use html::root::Html;
 use html::tables::builders::TableCellBuilder;
-use ical::parser::vcard::component::VcardContact;
 use ical::parser::Component;
-use percent_encoding_rfc3986::{utf8_percent_encode, NON_ALPHANUMERIC};
+use ical::parser::vcard::component::VcardContact;
+use percent_encoding_rfc3986::{NON_ALPHANUMERIC, utf8_percent_encode};
 use regex::{Captures, Regex};
 use std::collections::BTreeMap;
 use std::io::BufReader;
