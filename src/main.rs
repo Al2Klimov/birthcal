@@ -19,7 +19,7 @@ fn main() {
 }
 
 fn handler(_: Request) -> Response {
-    let yyyymmdd = Regex::new(r"\A([0-9]{4})([0-9]{2})([0-9]{2})\z").unwrap();
+    let yyyymmdd = Regex::new(r"\A(--|[0-9]{4})([0-9]{2})([0-9]{2})\z").unwrap();
 
     let url = match cli::require_noempty_utf8_env("BIRTHCAL_CARDS") {
         Err(err) => {
@@ -71,7 +71,7 @@ fn handler(_: Request) -> Response {
                                         (
                                             parse::<u8>(&cap, 2).unwrap(),
                                             parse::<u8>(&cap, 3).unwrap(),
-                                            parse::<u16>(&cap, 1).unwrap(),
+                                            parse::<i16>(&cap, 1).unwrap_or(-1),
                                             name,
                                         ),
                                         contact_prop(&mut vcard, "URL"),
@@ -91,7 +91,11 @@ fn handler(_: Request) -> Response {
                             for ((month, day, year, name), url) in urls_by_mdy_name {
                                 table.table_row(|tr| {
                                     tr.table_cell(|td| {
-                                        td.text(format!("{}-{}-{}", year, month, day))
+                                        td.text(if year < 0 {
+                                            format!("????-{}-{}", month, day)
+                                        } else {
+                                            format!("{}-{}-{}", year, month, day)
+                                        })
                                     })
                                     .table_cell(|td| name_cell(td, name, url, &srch))
                                 });
