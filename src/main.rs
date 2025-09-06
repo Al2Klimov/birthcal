@@ -3,21 +3,24 @@
 mod cli;
 
 use crate::cli::EnvError;
-use cgi::{empty_response, handle, html_response, Request, Response};
-use chrono::{Datelike, NaiveDate};
+use cgi::{Request, Response, empty_response, handle, html_response};
 use html::root::Html;
 use html::tables::builders::TableCellBuilder;
-use ical::parser::vcard::component::VcardContact;
 use ical::parser::Component;
-use percent_encoding_rfc3986::{utf8_percent_encode, NON_ALPHANUMERIC};
+use ical::parser::vcard::component::VcardContact;
+use percent_encoding_rfc3986::{NON_ALPHANUMERIC, utf8_percent_encode};
+use regex::{Captures, Regex};
 use std::collections::BTreeMap;
 use std::io::BufReader;
+use std::str::FromStr;
 
 fn main() {
     handle(handler)
 }
 
 fn handler(_: Request) -> Response {
+    let yyyymmdd = Regex::new(r"\A(--|[0-9]{4})([0-9]{2})([0-9]{2})\z").unwrap();
+
     let url = match cli::require_noempty_utf8_env("BIRTHCAL_CARDS") {
         Err(err) => {
             eprintln!("{}", err);
@@ -58,22 +61,23 @@ fn handler(_: Request) -> Response {
                             None => {
                                 urls_by_name.insert(name, contact_prop(&mut vcard, "URL"));
                             }
-                            Some(birthday) => {
-                                let df = "%Y%m%d";
-
-                                match NaiveDate::parse_from_str(birthday.as_str(), df) {
-                                    Err(err) => {
-                                        eprintln!("{} is not like {}: {}", birthday, df, err);
-                                        return empty_response(502);
-                                    }
-                                    Ok(date) => {
-                                        urls_by_mdy_name.insert(
-                                            (date.month(), date.day(), date.year(), name),
-                                            contact_prop(&mut vcard, "URL"),
-                                        );
-                                    }
+                            Some(birthday) => match yyyymmdd.captures(birthday.as_str()) {
+                                None => {
+                                    eprintln!("{} is not like {}", birthday, yyyymmdd);
+                                    return empty_response(502);
                                 }
-                            }
+                                Some(cap) => {
+                                    urls_by_mdy_name.insert(
+                                        (
+                                            parse::<u8>(&cap, 2).unwrap(),
+                                            parse::<u8>(&cap, 3).unwrap(),
+                                            parse::<i16>(&cap, 1).unwrap_or(-1),
+                                            name,
+                                        ),
+                                        contact_prop(&mut vcard, "URL"),
+                                    );
+                                }
+                            },
                         },
                     },
                 }
@@ -87,7 +91,11 @@ fn handler(_: Request) -> Response {
                             for ((month, day, year, name), url) in urls_by_mdy_name {
                                 table.table_row(|tr| {
                                     tr.table_cell(|td| {
-                                        td.text(format!("{}-{}-{}", year, month, day))
+                                        td.text(if year < 0 {
+                                            format!("????-{}-{}", month, day)
+                                        } else {
+                                            format!("{}-{}-{}", year, month, day)
+                                        })
                                     })
                                     .table_cell(|td| name_cell(td, name, url, &srch))
                                 });
@@ -115,6 +123,13 @@ fn contact_prop(contact: &mut VcardContact, prop: &'static str) -> Option<String
         None => None,
         Some(val) => val.value.take(),
     }
+}
+
+fn parse<'a, I>(cap: &Captures<'a>, i: usize) -> Result<I, I::Err>
+where
+    I: FromStr,
+{
+    cap.get(i).unwrap().as_str().parse::<I>()
 }
 
 fn name_cell<'a>(
