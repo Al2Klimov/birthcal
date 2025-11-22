@@ -92,9 +92,9 @@ fn handler(_: Request) -> Response {
                                 table.table_row(|tr| {
                                     tr.table_cell(|td| {
                                         td.text(if year < 0 {
-                                            format!("????-{}-{}", month, day)
+                                            format!("????-{:02}-{:02}", month, day)
                                         } else {
-                                            format!("{}-{}-{}", year, month, day)
+                                            format!("{}-{:02}-{:02}", year, month, day)
                                         })
                                     })
                                     .table_cell(|td| name_cell(td, name, url, &srch))
