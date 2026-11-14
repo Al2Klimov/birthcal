@@ -59,7 +59,8 @@ fn handler(_: Request) -> Response {
                         None => {}
                         Some(name) => match contact_prop(&mut vcard, "BDAY") {
                             None => {
-                                urls_by_name.insert(name, contact_prop(&mut vcard, "URL"));
+                                let label = contact_prop(&mut vcard, "LABEL");
+                                urls_by_name.insert(name, (contact_prop(&mut vcard, "URL"), label));
                             }
                             Some(birthday) => match yyyymmdd.captures(birthday.as_str()) {
                                 None => {
@@ -67,6 +68,7 @@ fn handler(_: Request) -> Response {
                                     return empty_response(502);
                                 }
                                 Some(cap) => {
+                                    let label = contact_prop(&mut vcard, "LABEL");
                                     urls_by_mdy_name.insert(
                                         (
                                             parse::<u8>(&cap, 2).unwrap(),
@@ -74,7 +76,7 @@ fn handler(_: Request) -> Response {
                                             parse::<i16>(&cap, 1).unwrap_or(-1),
                                             name,
                                         ),
-                                        contact_prop(&mut vcard, "URL"),
+                                        (contact_prop(&mut vcard, "URL"), label),
                                     );
                                 }
                             },
@@ -88,7 +90,7 @@ fn handler(_: Request) -> Response {
                 Html::builder()
                     .body(|body| {
                         body.table(|table| {
-                            for ((month, day, year, name), url) in urls_by_mdy_name {
+                            for ((month, day, year, name), (url, label)) in urls_by_mdy_name {
                                 table.table_row(|tr| {
                                     tr.table_cell(|td| {
                                         td.text(if year < 0 {
@@ -98,13 +100,15 @@ fn handler(_: Request) -> Response {
                                         })
                                     })
                                     .table_cell(|td| name_cell(td, name, url, &srch))
+                                    .table_cell(|td| label_cell(td, label))
                                 });
                             }
 
-                            for (name, url) in urls_by_name {
+                            for (name, (url, label)) in urls_by_name {
                                 table.table_row(|tr| {
                                     tr.table_cell(|td| td.text("?"))
                                         .table_cell(|td| name_cell(td, name, url, &srch))
+                                        .table_cell(|td| label_cell(td, label))
                                 });
                             }
 
@@ -130,6 +134,13 @@ where
     I: FromStr,
 {
     cap.get(i).unwrap().as_str().parse::<I>()
+}
+
+fn label_cell(td: &mut TableCellBuilder, label: Option<String>) -> &mut TableCellBuilder {
+    match label {
+        Some(label) => td.input(|i| i.type_("text").value(label).readonly("")),
+        None => td,
+    }
 }
 
 fn name_cell<'a>(
